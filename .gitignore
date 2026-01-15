@@ -1,6 +1,5 @@
 # Firebase config
 .env
-js/config.js
 
 # IDE
 .cursor/
