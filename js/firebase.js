@@ -13,7 +13,7 @@ async function initFirebase() {
 
     initPromise = (async () => {
         try {
-            const response = await fetch('https://twineed.netlify.app/netlify/functions/firebaseConfig');
+            const response = await fetch('https://twineed.netlify.app/.netlify/functions/firebaseConfig');
             if (!response.ok) {
                 throw new Error('Failed to fetch Firebase config');
             }
