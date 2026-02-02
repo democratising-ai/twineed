@@ -2,18 +2,23 @@
 // IMPORT / EXPORT - TWINE 2 ARCHIVE FORMAT HANDLING
 // =====================================================
 
-import { esc, download } from './utils.js';
+import { download } from './utils.js';
 
 // =====================================================
 // GENERATE UUID v4 FOR IFID
 // =====================================================
 function generateIFID() {
     // Generate a v4 UUID with uppercase letters (Twine 2 standard)
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16).toUpperCase();
-    });
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID().toUpperCase();
+    }
+    // Fallback using crypto.getRandomValues
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 1
+    const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
 }
 
 // =====================================================
@@ -27,15 +32,6 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
-}
-
-// =====================================================
-// UNESCAPE HTML ENTITIES FROM TWINE FORMAT
-// =====================================================
-function unescapeHtml(str) {
-    if (!str) return '';
-    const doc = new DOMParser().parseFromString(str, 'text/html');
-    return doc.documentElement.textContent;
 }
 
 // =====================================================
@@ -192,9 +188,13 @@ function generateTwineArchive(story) {
     const zoom = story.zoom || 1;
     const storyTags = story.tags || '';
     const stylesheet = story.stylesheet || '';
-    const javascript = story.javascript || '';
+    // Always clear javascript to prevent stored XSS in exports
+    const javascript = '';
 
-    return `<tw-storydata name="${escapeHtml(story.title)}" startnode="${startNodePid}" creator="Twine Workshop" creator-version="1.0.0" format="${escapeHtml(format)}" format-version="${escapeHtml(formatVersion)}" ifid="${ifid}" options="" tags="${escapeHtml(storyTags)}" zoom="${zoom}" hidden><style role="stylesheet" id="twine-user-stylesheet" type="text/twine-css">${stylesheet}</style><script role="script" id="twine-user-script" type="text/twine-javascript">${javascript}</script>${tagElements}${passageElements}</tw-storydata>`;
+    const safeStylesheet = (stylesheet || '').replace(/<\//gi, '<\\/');
+    const safeJavascript = (javascript || '').replace(/<\//gi, '<\\/');
+
+    return `<tw-storydata name="${escapeHtml(story.title)}" startnode="${startNodePid}" creator="Twine Workshop" creator-version="1.0.0" format="${escapeHtml(format)}" format-version="${escapeHtml(formatVersion)}" ifid="${escapeHtml(ifid)}" options="" tags="${escapeHtml(storyTags)}" zoom="${zoom}" hidden><style role="stylesheet" id="twine-user-stylesheet" type="text/twine-css">${safeStylesheet}</style><script role="script" id="twine-user-script" type="text/twine-javascript">${safeJavascript}</script>${tagElements}${passageElements}</tw-storydata>`;
 }
 
 // =====================================================
@@ -208,13 +208,16 @@ export function exportAsHtml(story) {
 function generatePlayableHtml(story) {
     const passages = story.passages || {};
     const passagesJson = JSON.stringify(passages).replace(/<\/script>/gi, '<\\/script>');
+    const safeTitle = escapeHtml(story.title);
+    const safeTitleJs = JSON.stringify(story.title || '').replace(/<\/script>/gi, '<\\/script>');
+    const safeStartPassage = JSON.stringify(story.startPassage || 'Start').replace(/<\/script>/gi, '<\\/script>');
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${esc(story.title)}</title>
+<title>${safeTitle}</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -258,35 +261,49 @@ h1 {
 <body>
 <div id="story"></div>
 <script>
-const passages = ${passagesJson};
-const startPassage = "${story.startPassage || 'Start'}";
+var passages = ${passagesJson};
+var startPassage = ${safeStartPassage};
+var storyTitle = ${safeTitleJs};
+
+function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
 
 function showPassage(name) {
-    const p = passages[name];
+    var p = passages[name];
     if (!p) {
-        document.getElementById('story').innerHTML = '<p>Passage not found: ' + name + '</p>';
+        document.getElementById('story').innerHTML = '<p>Passage not found: ' + escHtml(name) + '</p>';
         return;
     }
 
-    let content = p.content || '';
+    var content = escHtml(p.content || '');
 
-    // Handle [[Display Text->Target]] syntax
-    content = content.replace(/\\[\\[([^\\]]+)->([^\\]]+)\\]\\]/g, (match, display, target) => {
-        return '<span class="link" onclick="showPassage(\\'' + target.trim().replace(/'/g, "\\\\'") + '\\')">' + display.trim() + '</span>';
+    // Handle [[Display Text->Target]] syntax (-> is escaped to -&gt; after escHtml)
+    content = content.replace(/\\[\\[([^\\]]+)-&gt;([^\\]]+)\\]\\]/g, function(m, display, target) {
+        return '<span class="link" data-target="' + escHtml(target.trim()).replace(/"/g, '&quot;') + '">' + display.trim() + '</span>';
     });
 
     // Handle [[Display Text|Target]] syntax
-    content = content.replace(/\\[\\[([^\\]|]+)\\|([^\\]]+)\\]\\]/g, (match, display, target) => {
-        return '<span class="link" onclick="showPassage(\\'' + target.trim().replace(/'/g, "\\\\'") + '\\')">' + display.trim() + '</span>';
+    content = content.replace(/\\[\\[([^\\]|]+)\\|([^\\]]+)\\]\\]/g, function(m, display, target) {
+        return '<span class="link" data-target="' + escHtml(target.trim()).replace(/"/g, '&quot;') + '">' + display.trim() + '</span>';
     });
 
     // Handle [[Target]] syntax (simple links)
-    content = content.replace(/\\[\\[([^\\]|>]+)\\]\\]/g, (match, target) => {
-        return '<span class="link" onclick="showPassage(\\'' + target.trim().replace(/'/g, "\\\\'") + '\\')">' + target.trim() + '</span>';
+    content = content.replace(/\\[\\[([^\\]|>]+)\\]\\]/g, function(m, target) {
+        return '<span class="link" data-target="' + escHtml(target.trim()).replace(/"/g, '&quot;') + '">' + target.trim() + '</span>';
     });
 
-    content = content.split('\\n\\n').map(p => '<p>' + p.replace(/\\n/g, '<br>') + '</p>').join('');
-    document.getElementById('story').innerHTML = '<h1>${esc(story.title)}</h1>' + content;
+    content = content.split('\\n\\n').map(function(para) { return '<p>' + para.replace(/\\n/g, '<br>') + '</p>'; }).join('');
+    var el = document.getElementById('story');
+    el.innerHTML = '<h1>' + escHtml(storyTitle) + '</h1>' + content;
+
+    el.querySelectorAll('.link').forEach(function(link) {
+        link.addEventListener('click', function() {
+            showPassage(link.getAttribute('data-target'));
+        });
+    });
 }
 
 showPassage(startPassage);

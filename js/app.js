@@ -15,7 +15,14 @@ import {
     exportAsTwee,
     exportAsJson
 } from './import-export.js';
-import { $, esc, showToast, generatePassageName, deepClone } from './utils.js';
+import { $, esc, showToast, generatePassageName, validatePassageName, deepClone } from './utils.js';
+
+// =====================================================
+// OWNERSHIP HELPERS
+// =====================================================
+function isOwner(story) {
+    return story && story.ownerId === AuthService.getCurrentUserId();
+}
 
 // =====================================================
 // APP STATE
@@ -55,6 +62,7 @@ const canvas = new CanvasController({
                 });
             } catch (err) {
                 console.error(err);
+                showToast('Error saving position');
             }
         }
     }
@@ -142,6 +150,7 @@ $('googleSignInBtn').addEventListener('click', async () => {
 
 $('forgotPasswordBtn').addEventListener('click', () => {
     $('forgotEmail').value = $('loginEmail').value;
+    $('forgotError').style.display = 'none';
     $('forgotPasswordModal').classList.add('active');
 });
 
@@ -155,10 +164,13 @@ $('forgotPasswordForm').addEventListener('submit', async e => {
 
     try {
         await AuthService.sendPasswordReset(email);
+        $('forgotError').style.display = 'none';
         $('forgotPasswordModal').classList.remove('active');
         showToast('Password reset email sent!');
     } catch (err) {
-        showAuthError(AuthService.getErrorMessage(err.code));
+        const errorEl = $('forgotError');
+        errorEl.textContent = AuthService.getErrorMessage(err.code);
+        errorEl.style.display = 'block';
     }
 });
 
@@ -167,6 +179,7 @@ $('logoutBtn').addEventListener('click', async () => {
         await AuthService.signOut();
     } catch (err) {
         console.error(err);
+        showToast('Error signing out');
     }
 });
 
@@ -286,6 +299,13 @@ function openStory(id) {
 
     storyTitle.textContent = currentStory.title;
 
+    // Toggle UI based on ownership
+    const owned = isOwner(currentStory);
+    $('addPassageBtn').style.display = owned ? '' : 'none';
+    $('renameStoryBtn').style.display = owned ? '' : 'none';
+    $('deleteStoryBtn').style.display = owned ? '' : 'none';
+    $('duplicateStoryBtn').style.display = '';
+
     renderer.setStory(currentStory);
     player.setStory(currentStory);
     canvas.reset();
@@ -314,6 +334,7 @@ document.addEventListener('click', () => {
 });
 
 $('renameStoryBtn').addEventListener('click', () => {
+    if (!isOwner(currentStory)) return;
     $('renameTitle').value = currentStory.title;
     $('renameModal').classList.add('active');
     $('renameTitle').focus();
@@ -323,6 +344,7 @@ $('cancelRename').addEventListener('click', () => $('renameModal').classList.rem
 
 $('renameForm').addEventListener('submit', async e => {
     e.preventDefault();
+    if (!isOwner(currentStory)) { showToast('Only the owner can rename'); return; }
     const title = $('renameTitle').value.trim();
     if (!title) return;
 
@@ -334,6 +356,7 @@ $('renameForm').addEventListener('submit', async e => {
         showToast('Renamed!');
     } catch (err) {
         console.error(err);
+        showToast('Error renaming story');
     }
 });
 
@@ -358,12 +381,15 @@ $('duplicateForm').addEventListener('submit', async e => {
         });
         $('duplicateModal').classList.remove('active');
         showToast('Duplicated!');
+        stories = await StoryDB.getAll();
     } catch (err) {
         console.error(err);
+        showToast('Error duplicating story');
     }
 });
 
 $('deleteStoryBtn').addEventListener('click', async () => {
+    if (!isOwner(currentStory)) { showToast('Only the owner can delete'); return; }
     if (!confirm(`Delete "${currentStory.title}"? This cannot be undone.`)) return;
 
     try {
@@ -372,6 +398,7 @@ $('deleteStoryBtn').addEventListener('click', async () => {
         closeStory();
     } catch (err) {
         console.error(err);
+        showToast('Error deleting story');
     }
 });
 
@@ -434,6 +461,9 @@ $('importForm').addEventListener('submit', async e => {
     if (!file) return;
 
     const reader = new FileReader();
+    reader.onerror = () => {
+        showToast('Error reading file');
+    };
     reader.onload = async event => {
         try {
             // Use the auto-detect parser
@@ -444,19 +474,47 @@ $('importForm').addEventListener('submit', async e => {
                 return;
             }
 
+            // Sanitize: strip script tags from stylesheet, clear javascript
+            // (javascript field is not used by this app and is an XSS risk in exports)
+            const safeStylesheet = (story.stylesheet || '')
+                .replace(/<script[\s\S]*?<\/script>/gi, '')
+                .replace(/expression\s*\(/gi, '')
+                .replace(/javascript\s*:/gi, '')
+                .replace(/@import\b/gi, '/* @import */')
+                .replace(/url\s*\(\s*['"]?\s*data\s*:/gi, 'url(/* blocked */')
+                .replace(/behavior\s*:/gi, '/* behavior: */')
+                .replace(/-moz-binding\s*:/gi, '/* -moz-binding: */');
+
+            // Sanitize passage names to prevent prototype pollution
+            const reserved = ['__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString', 'valueOf'];
+            const safePassages = {};
+            for (const [name, passage] of Object.entries(story.passages || {})) {
+                if (reserved.includes(name)) continue;
+                if (!name || !name.trim()) continue;
+                safePassages[name] = passage;
+            }
+            if (Object.keys(safePassages).length === 0) {
+                showToast('No valid passages found in file');
+                return;
+            }
+            // Ensure startPassage references a valid passage
+            const safeStart = safePassages[story.startPassage]
+                ? story.startPassage
+                : Object.keys(safePassages)[0];
+
             // Create the story in the database
             await StoryDB.create({
                 title: story.title,
-                startPassage: story.startPassage,
-                passages: story.passages,
+                startPassage: safeStart,
+                passages: safePassages,
                 // Store additional metadata if present
                 ifid: story.ifid,
                 format: story.format,
                 formatVersion: story.formatVersion,
                 zoom: story.zoom,
                 tags: story.tags,
-                stylesheet: story.stylesheet,
-                javascript: story.javascript,
+                stylesheet: safeStylesheet,
+                javascript: '',
                 tagColors: story.tagColors
             });
 
@@ -481,25 +539,32 @@ $('zoomOutBtn').addEventListener('click', () => canvas.zoomOut());
 // ADD PASSAGE
 // =====================================================
 $('addPassageBtn').addEventListener('click', async () => {
-    if (!currentStory) return;
+    if (!currentStory || !isOwner(currentStory)) return;
 
     const name = generatePassageName(currentStory.passages);
+    const nameError = validatePassageName(name);
+    if (nameError) {
+        showToast(nameError);
+        return;
+    }
     const pos = canvas.getCenterPosition();
 
     const passage = { name, content: '', x: pos.x, y: pos.y };
 
     try {
-        if (!currentStory.passages) currentStory.passages = {};
-        currentStory.passages[name] = passage;
-
         await StoryDB.update(currentStory.id, {
             [`passages.${name}`]: passage
         });
+
+        // Update local state only after DB success
+        if (!currentStory.passages) currentStory.passages = {};
+        currentStory.passages[name] = passage;
 
         renderer.render();
         openPassageEditor(name);
     } catch (err) {
         console.error(err);
+        showToast('Error adding passage');
     }
 });
 
@@ -512,8 +577,13 @@ function openPassageEditor(name) {
 
     renderer.setSelectedPassage(name);
 
+    const owned = isOwner(currentStory);
     $('passageNameInput').value = passage.name;
+    $('passageNameInput').readOnly = !owned;
     $('passageContentInput').value = passage.content || '';
+    $('passageContentInput').readOnly = !owned;
+    $('deletePassageBtn').style.display = owned ? '' : 'none';
+    $('setStartPassageBtn').style.display = owned ? '' : 'none';
     $('passageModal').classList.add('active');
     $('passageContentInput').focus();
 }
@@ -532,17 +602,52 @@ async function closePassageEditor() {
         return;
     }
 
+    // Non-owners can only view, not save
+    if (!isOwner(currentStory)) {
+        renderer.setSelectedPassage(null);
+        $('passageModal').classList.remove('active');
+        return;
+    }
+
     const oldName = selectedPassage;
     const newName = $('passageNameInput').value.trim() || oldName;
     const content = $('passageContentInput').value;
 
+    // Validate new name if changed
+    if (newName !== oldName) {
+        const nameError = validatePassageName(newName);
+        if (nameError) {
+            showToast(nameError);
+            return;
+        }
+    }
+
     try {
         if (newName !== oldName) {
-            // Rename passage
-            const passages = { ...currentStory.passages };
+            // Check for name collision
+            if (currentStory.passages[newName]) {
+                showToast(`A passage named "${newName}" already exists`);
+                return;
+            }
+
+            // Rename passage (deep clone to avoid mutating local state before DB success)
+            const passages = deepClone(currentStory.passages);
             const passage = passages[oldName];
             delete passages[oldName];
             passages[newName] = { ...passage, name: newName, content };
+
+            // Update link references in all other passages
+            Object.values(passages).forEach(p => {
+                if (p.name === newName) return; // skip the renamed passage itself
+                if (!p.content) return;
+                p.content = p.content
+                    .replace(/\[\[([^\]]*?)\|([^\]]*?)\]\]/g, (m, display, target) =>
+                        target.trim() === oldName ? `[[${display}|${newName}]]` : m)
+                    .replace(/\[\[([^\]]*?)->([^\]]*?)\]\]/g, (m, display, target) =>
+                        target.trim() === oldName ? `[[${display}->${newName}]]` : m)
+                    .replace(/\[\[([^\]|>]*?)\]\]/g, (m, target) =>
+                        target.trim() === oldName ? `[[${newName}]]` : m);
+            });
 
             let startPassage = currentStory.startPassage;
             if (startPassage === oldName) startPassage = newName;
@@ -553,8 +658,8 @@ async function closePassageEditor() {
             currentStory.startPassage = startPassage;
         } else {
             // Just update content
-            currentStory.passages[oldName].content = content;
             await StoryDB.updatePassage(currentStory.id, oldName, { content });
+            currentStory.passages[oldName].content = content;
         }
 
         renderer.setSelectedPassage(null);
@@ -562,17 +667,26 @@ async function closePassageEditor() {
         renderer.render();
     } catch (err) {
         console.error(err);
+        showToast('Error saving passage');
     }
 }
 
-$('previewPassageBtn').addEventListener('click', () => {
+$('previewPassageBtn').addEventListener('click', async () => {
     const selectedPassage = renderer.getSelectedPassage();
     if (!selectedPassage) return;
 
-    // Save current content before preview
+    // Persist current content before preview
     const content = $('passageContentInput').value;
     if (currentStory.passages[selectedPassage]) {
         currentStory.passages[selectedPassage].content = content;
+        if (isOwner(currentStory)) {
+            try {
+                await StoryDB.updatePassage(currentStory.id, selectedPassage, { content });
+            } catch (err) {
+                console.error(err);
+                showToast('Error saving passage before preview');
+            }
+        }
     }
 
     $('passageModal').classList.remove('active');
@@ -581,6 +695,7 @@ $('previewPassageBtn').addEventListener('click', () => {
 });
 
 $('setStartPassageBtn').addEventListener('click', async () => {
+    if (!isOwner(currentStory)) return;
     const selectedPassage = renderer.getSelectedPassage();
     if (!selectedPassage) return;
 
@@ -591,10 +706,12 @@ $('setStartPassageBtn').addEventListener('click', async () => {
         renderer.render();
     } catch (err) {
         console.error(err);
+        showToast('Error setting start passage');
     }
 });
 
 $('deletePassageBtn').addEventListener('click', async () => {
+    if (!isOwner(currentStory)) return;
     const selectedPassage = renderer.getSelectedPassage();
     if (!selectedPassage) return;
 
@@ -606,14 +723,27 @@ $('deletePassageBtn').addEventListener('click', async () => {
     if (!confirm(`Delete "${selectedPassage}"?`)) return;
 
     try {
-        await StoryDB.deletePassage(currentStory.id, selectedPassage);
+        // If deleting the start passage, reassign to another passage
+        let newStart = undefined;
+        if (currentStory.startPassage === selectedPassage) {
+            newStart = Object.keys(currentStory.passages).find(n => n !== selectedPassage);
+        }
+
+        // Atomic: delete passage and update start in one call
+        await StoryDB.deletePassage(currentStory.id, selectedPassage, newStart);
         delete currentStory.passages[selectedPassage];
+
+        if (newStart !== undefined) {
+            currentStory.startPassage = newStart;
+        }
+
         renderer.setSelectedPassage(null);
         $('passageModal').classList.remove('active');
         renderer.render();
         showToast('Deleted');
     } catch (err) {
         console.error(err);
+        showToast('Error deleting passage');
     }
 });
 

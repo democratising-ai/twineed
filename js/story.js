@@ -93,12 +93,13 @@ export class StoryRenderer {
     // CONNECTIONS RENDERING
     // =====================================================
     renderConnections() {
-        if (!this.currentStory?.passages) {
-            this.connectionsLayer.innerHTML = '';
-            return;
+        while (this.connectionsLayer.firstChild) {
+            this.connectionsLayer.removeChild(this.connectionsLayer.firstChild);
         }
 
-        let svg = '';
+        if (!this.currentStory?.passages) return;
+
+        const svgNS = 'http://www.w3.org/2000/svg';
 
         Object.values(this.currentStory.passages).forEach(passage => {
             const links = this.extractLinks(passage.content);
@@ -112,14 +113,16 @@ export class StoryRenderer {
                 const toX = (target.x || 100) + 80;
                 const toY = (target.y || 100) + 50;
 
-                // Curved line
                 const dx = toX - fromX;
                 const dy = toY - fromY;
-
                 const ctrlX = (fromX + toX) / 2 - dy * 0.2;
                 const ctrlY = (fromY + toY) / 2 + dx * 0.2;
 
-                svg += `<path class="connection-line" d="M${fromX},${fromY} Q${ctrlX},${ctrlY} ${toX},${toY}"/>`;
+                // Curved line
+                const path = document.createElementNS(svgNS, 'path');
+                path.setAttribute('class', 'connection-line');
+                path.setAttribute('d', `M${fromX},${fromY} Q${ctrlX},${ctrlY} ${toX},${toY}`);
+                this.connectionsLayer.appendChild(path);
 
                 // Arrow
                 const angle = Math.atan2(toY - ctrlY, toX - ctrlX);
@@ -129,11 +132,12 @@ export class StoryRenderer {
                 const bx = toX - arrowSize * Math.cos(angle + 0.4);
                 const by = toY - arrowSize * Math.sin(angle + 0.4);
 
-                svg += `<polygon class="connection-arrow" points="${toX},${toY} ${ax},${ay} ${bx},${by}"/>`;
+                const arrow = document.createElementNS(svgNS, 'polygon');
+                arrow.setAttribute('class', 'connection-arrow');
+                arrow.setAttribute('points', `${toX},${toY} ${ax},${ay} ${bx},${by}`);
+                this.connectionsLayer.appendChild(arrow);
             });
         });
-
-        this.connectionsLayer.innerHTML = svg;
     }
 
     // =====================================================
@@ -183,17 +187,17 @@ export class StoryPlayer {
 
         const passage = this.currentStory.passages[passageName];
         if (!passage) {
-            this.contentElement.innerHTML = `<p>Passage not found: ${passageName}</p>`;
+            this.contentElement.innerHTML = `<p>Passage not found: ${esc(passageName)}</p>`;
             return;
         }
 
-        let content = passage.content || '';
+        let content = esc(passage.content || '');
 
-        // Convert links
+        // Convert links (operating on already-escaped content)
         content = content.replace(/\[\[([^\]]+)\]\]/g, (match, inner) => {
             let display, target;
-            if (inner.includes('->')) {
-                [display, target] = inner.split('->').map(s => s.trim());
+            if (inner.includes('-&gt;')) {
+                [display, target] = inner.split('-&gt;').map(s => s.trim());
             } else if (inner.includes('|')) {
                 [display, target] = inner.split('|').map(s => s.trim());
             } else {

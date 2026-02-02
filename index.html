@@ -124,6 +124,10 @@
                     <h2>Stories</h2>
                 </div>
                 <div class="library-actions">
+                    <a href="help.html" class="btn btn-ghost" title="How to use TwineEd">
+                        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
+                        Help
+                    </a>
                     <button class="btn btn-secondary" id="importBtn">
                         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
                         Import
@@ -321,6 +325,7 @@
         <div class="modal">
             <h3>Reset Password</h3>
             <p class="modal-description">Enter your email address and we'll send you a link to reset your password.</p>
+            <div class="error-message" id="forgotError"></div>
             <form id="forgotPasswordForm">
                 <input type="email" id="forgotEmail" placeholder="Email address" required>
                 <div class="modal-actions">

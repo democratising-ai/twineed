@@ -20,13 +20,18 @@ export const $ = id => document.getElementById(id);
 /**
  * Show a toast notification
  */
+let _toastTimer = null;
 export function showToast(msg, duration = 2500) {
     const toast = $('toast');
     if (!toast) return;
-    
+
+    if (_toastTimer) clearTimeout(_toastTimer);
     toast.textContent = msg;
     toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), duration);
+    _toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+        _toastTimer = null;
+    }, duration);
 }
 
 /**
@@ -37,7 +42,7 @@ export function download(filename, content, type = 'text/html') {
     a.href = URL.createObjectURL(new Blob([content], { type }));
     a.download = filename;
     a.click();
-    URL.revokeObjectURL(a.href);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 /**
@@ -50,6 +55,19 @@ export function generatePassageName(passages, baseName = 'New Passage') {
         name = `${baseName} ${i++}`;
     }
     return name;
+}
+
+/**
+ * Validate a passage name. Returns an error string or null if valid.
+ */
+export function validatePassageName(name) {
+    if (!name || !name.trim()) return 'Passage name cannot be empty';
+    if (name.length > 200) return 'Passage name is too long (max 200 characters)';
+    if (name.includes('.')) return 'Passage name cannot contain dots';
+    if (/[[\]{}#$\/]/.test(name)) return 'Passage name contains invalid characters';
+    const reserved = ['__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString', 'valueOf'];
+    if (reserved.includes(name)) return 'Passage name is reserved';
+    return null;
 }
 
 /**
