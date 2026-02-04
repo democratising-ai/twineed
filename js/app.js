@@ -28,6 +28,8 @@ function isOwner(story) {
 // APP STATE
 // =====================================================
 let stories = [];
+let communityStories = [];
+let currentTab = 'mine';
 let currentStory = null;
 
 // =====================================================
@@ -142,9 +144,7 @@ $('googleSignInBtn').addEventListener('click', async () => {
     try {
         await AuthService.signInWithGoogle();
     } catch (err) {
-        if (err.code !== 'auth/popup-closed-by-user') {
-            showAuthError(AuthService.getErrorMessage(err.code));
-        }
+        showAuthError(AuthService.getErrorMessage(err.code));
     }
 });
 
@@ -214,38 +214,106 @@ async function loadStories() {
     }
 }
 
+async function loadCommunityStories() {
+    storiesList.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+    try {
+        communityStories = await StoryDB.getAllPublic();
+        renderStories();
+    } catch (err) {
+        console.error(err);
+        storiesList.innerHTML = '<div class="empty-state"><p>Error loading community stories.</p></div>';
+    }
+}
+
+function switchTab(tab) {
+    currentTab = tab;
+    $('myStoriesTab').classList.toggle('active', tab === 'mine');
+    $('communityTab').classList.toggle('active', tab === 'community');
+    if (tab === 'mine') {
+        loadStories();
+    } else {
+        loadCommunityStories();
+    }
+}
+
 function renderStories() {
-    if (!stories.length) {
+    const list = currentTab === 'mine' ? stories : communityStories;
+    const uid = AuthService.getCurrentUserId();
+
+    if (!list.length) {
+        const msg = currentTab === 'mine'
+            ? '<h3>No stories yet</h3><p>Create your first interactive story</p>'
+            : '<h3>No community stories</h3><p>No one has shared a story yet</p>';
         storiesList.innerHTML = `
             <div class="empty-state">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
                 </svg>
-                <h3>No stories yet</h3>
-                <p>Create your first interactive story</p>
+                ${msg}
             </div>`;
         return;
     }
 
-    storiesList.innerHTML = stories.map(s => {
+    storiesList.innerHTML = list.map(s => {
         const count = s.passages ? Object.keys(s.passages).length : 0;
         const date = s.updatedAt ? new Date(s.updatedAt.seconds * 1000).toLocaleDateString() : '';
+        const owned = s.ownerId === uid;
+        const badge = currentTab === 'community' && owned ? ' · <span class="badge-own">Yours</span>' : '';
+        const duplicateBtn = currentTab === 'community' && !owned
+            ? `<button class="btn-duplicate-card" data-id="${s.id}" title="Duplicate to My Stories">
+                <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+               </button>`
+            : '';
         return `
-            <div class="story-card" data-id="${s.id}">
+            <div class="story-card ${currentTab === 'community' && !owned ? 'community-card' : ''}" data-id="${s.id}">
                 <div class="story-card-header">
                     <h3>${esc(s.title)}</h3>
-                    <div class="story-card-icon">
-                        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    <div class="story-card-actions">
+                        ${duplicateBtn}
+                        <div class="story-card-icon">
+                            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                        </div>
                     </div>
                 </div>
-                <p class="story-card-meta">${count} passages · ${date}</p>
+                <p class="story-card-meta">${count} passages · ${date}${badge}</p>
             </div>`;
     }).join('');
 
     storiesList.querySelectorAll('.story-card').forEach(card => {
-        card.addEventListener('click', () => openStory(card.dataset.id));
+        card.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-duplicate-card')) return;
+            openStory(card.dataset.id);
+        });
+    });
+
+    storiesList.querySelectorAll('.btn-duplicate-card').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const storyId = btn.dataset.id;
+            const source = communityStories.find(s => s.id === storyId);
+            if (!source) return;
+
+            try {
+                await StoryDB.create({
+                    title: source.title + ' (Copy)',
+                    startPassage: source.startPassage,
+                    passages: deepClone(source.passages)
+                });
+                showToast('Duplicated to My Stories!');
+            } catch (err) {
+                console.error(err);
+                showToast('Error duplicating story');
+            }
+        });
     });
 }
+
+// =====================================================
+// LIBRARY TABS
+// =====================================================
+$('myStoriesTab').addEventListener('click', () => switchTab('mine'));
+$('communityTab').addEventListener('click', () => switchTab('community'));
 
 // =====================================================
 // STORY MANAGEMENT

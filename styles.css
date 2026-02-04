@@ -508,6 +508,35 @@ body {
     gap: 0.75rem;
 }
 
+/* Library Tabs */
+.library-tabs {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.library-tab {
+    padding: 0.5rem 1.25rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.library-tab:hover {
+    color: var(--text);
+}
+
+.library-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
 .stories-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -560,6 +589,53 @@ body {
     stroke: var(--accent);
     stroke-width: 2;
     fill: none;
+}
+
+.story-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.btn-duplicate-card {
+    width: 32px;
+    height: 32px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    padding: 0;
+}
+
+.btn-duplicate-card svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--text-muted);
+    stroke-width: 2;
+    fill: none;
+}
+
+.btn-duplicate-card:hover {
+    border-color: var(--accent);
+    background: var(--accent);
+}
+
+.btn-duplicate-card:hover svg {
+    stroke: white;
+}
+
+.community-card {
+    border-left: 3px solid var(--accent-dim, #6d48c9);
+}
+
+.badge-own {
+    color: var(--accent);
+    font-weight: 500;
 }
 
 .story-card-meta {

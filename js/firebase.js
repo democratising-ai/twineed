@@ -62,7 +62,7 @@ export const AuthService = {
 
     async signInWithGoogle() {
         await ensureInit();
-        return auth.signInWithPopup(googleProvider);
+        return auth.signInWithRedirect(googleProvider);
     },
 
     async sendPasswordReset(email) {
@@ -100,6 +100,15 @@ export const StoryDB = {
         if (!uid) throw new Error('Not authenticated');
         const snap = await db.collection('stories')
             .where('ownerId', '==', uid)
+            .orderBy('updatedAt', 'desc')
+            .get();
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    },
+
+    async getAllPublic() {
+        await ensureInit();
+        if (!auth.currentUser) throw new Error('Not authenticated');
+        const snap = await db.collection('stories')
             .orderBy('updatedAt', 'desc')
             .get();
         return snap.docs.map(d => ({ id: d.id, ...d.data() }));
