@@ -80,6 +80,7 @@ const renderer = new StoryRenderer({
         openPassageEditor(name);
     },
     onPassageDragStart: (node, e) => {
+        if (!isOwner(currentStory)) return;
         canvas.startDrag(node, e);
     }
 });
@@ -358,7 +359,7 @@ $('newStoryForm').addEventListener('submit', async e => {
 });
 
 function openStory(id) {
-    currentStory = stories.find(s => s.id === id);
+    currentStory = stories.find(s => s.id === id) || communityStories.find(s => s.id === id);
     if (!currentStory) return;
 
     libraryView.classList.add('hidden');
