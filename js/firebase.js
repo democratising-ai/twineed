@@ -63,7 +63,7 @@ export const AuthService = {
 
     async signInWithGoogle() {
         await ensureInit();
-        return auth.signInWithRedirect(googleProvider);
+        return auth.signInWithPopup(googleProvider);
     },
 
     async sendPasswordReset(email) {
