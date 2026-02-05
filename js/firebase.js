@@ -16,6 +16,7 @@ async function initFirebase() {
                 throw new Error('Failed to fetch Firebase config');
             }
             const firebaseConfig = await response.json();
+            firebaseConfig.authDomain = 'twineed.netlify.app';
 
             firebase.initializeApp(firebaseConfig);
             db = firebase.firestore();
