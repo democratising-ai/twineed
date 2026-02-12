@@ -1,8 +1,6 @@
 # Twine Workshop
 A collaborative, web-based interactive story editor inspired by Twine. Create, edit, and play branching narrative stories directly in your browser with real-time cloud storage.
 
-A web-based interactive fiction editor with cloud storage. Create branching narrative stories with a visual drag-and-drop interface.
-
 ## Features
 
 - **Visual Story Editor** - Drag-and-drop passage nodes on an infinite canvas
