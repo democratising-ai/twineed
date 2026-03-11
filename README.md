@@ -42,3 +42,7 @@ Set these in Environment variables:
 ## Local Development
 
 Use any static server, for example VS Code Live Server extension.
+
+## License
+
+This project is licensed under the MIT License.
