@@ -2,48 +2,23 @@
 // FIREBASE CONFIG & DATABASE SERVICE
 // =====================================================
 
-let db, auth, googleProvider;
-let initPromise = null;
+const firebaseConfig = {
+    apiKey: "AIzaSyB9ulysv3YQWyLVP1a2lWT70_DBPjMFk8w",
+    authDomain: "twineed-26b2f.firebaseapp.com",
+    projectId: "twineed-26b2f",
+    storageBucket: "twineed-26b2f.firebasestorage.app",
+    messagingSenderId: "734189021540",
+    appId: "1:734189021540:web:c1b5e2789c2e16385fb271"
+};
 
-// Initialize Firebase by fetching config from Netlify function
-async function initFirebase() {
-    if (initPromise) return initPromise;
-
-    initPromise = (async () => {
-        try {
-            const response = await fetch('https://twineed.netlify.app/.netlify/functions/firebaseConfig');
-            if (!response.ok) {
-                throw new Error('Failed to fetch Firebase config');
-            }
-            const firebaseConfig = await response.json();
-
-            firebase.initializeApp(firebaseConfig);
-            db = firebase.firestore();
-            auth = firebase.auth();
-            googleProvider = new firebase.auth.GoogleAuthProvider();
-        } catch (error) {
-            // Reset so next call retries instead of returning the rejected promise
-            initPromise = null;
-            console.error('Firebase initialization error:', error);
-            throw error;
-        }
-    })();
-
-    return initPromise;
-}
-async function ensureInit() {
-    if (!db || !auth) {
-        await initFirebase();
-    }
-}
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+const googleProvider = new firebase.auth.GoogleAuthProvider();
 
 export const AuthService = {
     onAuthStateChanged(callback) {
-        ensureInit().then(() => auth.onAuthStateChanged(callback))
-            .catch(err => {
-                console.error('Auth init failed:', err);
-                callback(null);
-            });
+        auth.onAuthStateChanged(callback);
     },
 
     getCurrentUserId() {
@@ -51,27 +26,22 @@ export const AuthService = {
     },
 
     async signInWithEmail(email, password) {
-        await ensureInit();
         return auth.signInWithEmailAndPassword(email, password);
     },
 
     async signUpWithEmail(email, password) {
-        await ensureInit();
         return auth.createUserWithEmailAndPassword(email, password);
     },
 
     async signInWithGoogle() {
-        await ensureInit();
         return auth.signInWithPopup(googleProvider);
     },
 
     async sendPasswordReset(email) {
-        await ensureInit();
         return auth.sendPasswordResetEmail(email);
     },
 
     async signOut() {
-        await ensureInit();
         return auth.signOut();
     },
 
@@ -95,7 +65,6 @@ export const AuthService = {
 // =====================================================
 export const StoryDB = {
     async getAll() {
-        await ensureInit();
         const uid = auth.currentUser?.uid;
         if (!uid) throw new Error('Not authenticated');
         const snap = await db.collection('stories')
@@ -106,7 +75,6 @@ export const StoryDB = {
     },
 
     async getAllPublic() {
-        await ensureInit();
         if (!auth.currentUser) throw new Error('Not authenticated');
         const snap = await db.collection('stories')
             .orderBy('updatedAt', 'desc')
@@ -115,13 +83,11 @@ export const StoryDB = {
     },
 
     async get(id) {
-        await ensureInit();
         const doc = await db.collection('stories').doc(id).get();
         return doc.exists ? { id: doc.id, ...doc.data() } : null;
     },
 
     async create(data) {
-        await ensureInit();
         const uid = auth.currentUser?.uid;
         if (!uid) throw new Error('Not authenticated');
         const ref = await db.collection('stories').add({
@@ -134,7 +100,6 @@ export const StoryDB = {
     },
 
     async update(id, data) {
-        await ensureInit();
         await db.collection('stories').doc(id).update({
             ...data,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -142,12 +107,10 @@ export const StoryDB = {
     },
 
     async delete(id) {
-        await ensureInit();
         await db.collection('stories').doc(id).delete();
     },
 
     async updatePassage(storyId, passageName, data) {
-        await ensureInit();
         // Use FieldPath to safely handle passage names with special characters
         const batch = db.batch();
         const docRef = db.collection('stories').doc(storyId);
@@ -160,7 +123,6 @@ export const StoryDB = {
     },
 
     async deletePassage(storyId, passageName, newStartPassage) {
-        await ensureInit();
         const docRef = db.collection('stories').doc(storyId);
         const fieldPath = new firebase.firestore.FieldPath('passages', passageName);
         // Use alternating field/value args for FieldPath support
@@ -175,7 +137,6 @@ export const StoryDB = {
     },
 
     async setPassages(storyId, passages, startPassage) {
-        await ensureInit();
         const update = {
             passages,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -186,5 +147,3 @@ export const StoryDB = {
         await db.collection('stories').doc(storyId).update(update);
     }
 };
-
-initFirebase().catch(console.error);

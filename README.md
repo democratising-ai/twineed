@@ -23,20 +23,6 @@ A collaborative, web-based interactive story editor inspired by Twine. Create, e
 2. Enable **Google** provider
 3. Add your domain to **Authorized domains** (e.g., `your-site.netlify.app`)
 
-### Hosting: Netlify (with serverless functions)
-
-- Import an existing project to Netlify from GitHub
-- The function at `netlify/functions/firebaseConfig.js` serves Firebase config from environment variables.
-
-Set these in Environment variables:
-
-- `FIREBASE_API_KEY`
-- `FIREBASE_AUTH_DOMAIN`
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_STORAGE_BUCKET`
-- `FIREBASE_MESSAGING_SENDER_ID`
-- `FIREBASE_APP_ID`
-
 ## Local Development
 
 Use any static server, for example VS Code Live Server extension.
