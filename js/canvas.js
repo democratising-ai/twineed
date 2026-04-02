@@ -84,6 +84,55 @@ export class CanvasController {
             const delta = e.deltaY > 0 ? -0.1 : 0.1;
             this.setZoom(this.zoom + delta);
         }, { passive: false });
+
+        // Touch pan start (any touch not on a passage node starts panning)
+        this.canvasView.addEventListener('touchstart', e => {
+            if (!e.target.closest('.passage-node')) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                this.isPanning = true;
+                this.panStartX = touch.clientX - this.x;
+                this.panStartY = touch.clientY - this.y;
+            }
+        }, { passive: false });
+
+        // Touch pan & drag move
+        document.addEventListener('touchmove', e => {
+            const touch = e.touches[0];
+            if (!touch) return;
+
+            if (this.isPanning) {
+                e.preventDefault();
+                this.x = touch.clientX - this.panStartX;
+                this.y = touch.clientY - this.panStartY;
+                this._updateTransform();
+            }
+
+            if (this.isDragging && this.dragNode) {
+                e.preventDefault();
+                const rect = this.canvasView.getBoundingClientRect();
+                const x = (touch.clientX - rect.left - this.x) / this.zoom - this.dragOffsetX;
+                const y = (touch.clientY - rect.top - this.y) / this.zoom - this.dragOffsetY;
+
+                this.dragNode.style.left = x + 'px';
+                this.dragNode.style.top = y + 'px';
+
+                this.onNodeDrag(this.dragNode.dataset.name, x, y);
+            }
+        }, { passive: false });
+
+        // Touch pan & drag end
+        document.addEventListener('touchend', () => {
+            if (this.isPanning) {
+                this.isPanning = false;
+            }
+
+            if (this.isDragging && this.dragNode) {
+                this.onNodeDragEnd(this.dragNode.dataset.name);
+                this.isDragging = false;
+                this.dragNode = null;
+            }
+        });
     }
 
     _updateTransform() {
@@ -113,14 +162,25 @@ export class CanvasController {
         this._updateTransform();
     }
 
+    // Center canvas on a specific point
+    centerOn(x, y) {
+        this.zoom = 1;
+        const viewRect = this.canvasView.getBoundingClientRect();
+        this.x = viewRect.width / 2 - x;
+        this.y = viewRect.height / 2 - y;
+        this._updateTransform();
+    }
+
     // Start dragging a node
     startDrag(node, e) {
         this.isDragging = true;
         this.dragNode = node;
 
         const rect = node.getBoundingClientRect();
-        this.dragOffsetX = (e.clientX - rect.left) / this.zoom;
-        this.dragOffsetY = (e.clientY - rect.top) / this.zoom;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        this.dragOffsetX = (clientX - rect.left) / this.zoom;
+        this.dragOffsetY = (clientY - rect.top) / this.zoom;
     }
 
     // Get position for centering new elements

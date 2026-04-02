@@ -295,6 +295,17 @@ function showPassage(name) {
         return '<span class="link" data-target="' + escHtml(target.trim()).replace(/"/g, '&quot;') + '">' + target.trim() + '</span>';
     });
 
+    // Twine markup
+    content = content.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+    content = content.replace(/\\/\\/(.+?)\\/\\//g, '<em>$1</em>');
+    content = content.replace(/__(.+?)__/g, '<u>$1</u>');
+    content = content.replace(/~~(.+?)~~/g, '<del>$1</del>');
+
+    // Media embedding
+    content = content.replace(/\\[img\\[([^\\]]+)\\]\\]/g, '<img src="$1" alt="">');
+    content = content.replace(/\\[audio\\[([^\\]]+)\\]\\]/g, '<audio src="$1" controls></audio>');
+    content = content.replace(/\\[video\\[([^\\]]+)\\]\\]/g, '<video src="$1" controls></video>');
+
     content = content.split('\\n\\n').map(function(para) { return '<p>' + para.replace(/\\n/g, '<br>') + '</p>'; }).join('');
     var el = document.getElementById('story');
     el.innerHTML = '<h1>' + escHtml(storyTitle) + '</h1>' + content;

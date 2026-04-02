@@ -31,6 +31,7 @@ let stories = [];
 let communityStories = [];
 let currentTab = 'mine';
 let currentStory = null;
+let duplicateSource = null;
 
 // =====================================================
 // DOM REFERENCES
@@ -239,8 +240,8 @@ function switchTab(tab) {
 }
 
 function renderStories() {
-    const list = currentTab === 'mine' ? stories : communityStories;
     const uid = AuthService.getCurrentUserId();
+    const list = currentTab === 'mine' ? stories : communityStories.filter(s => s.ownerId !== uid);
 
     if (!list.length) {
         const msg = currentTab === 'mine'
@@ -289,23 +290,16 @@ function renderStories() {
     });
 
     storiesList.querySelectorAll('.btn-duplicate-card').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
+        btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const storyId = btn.dataset.id;
             const source = communityStories.find(s => s.id === storyId);
             if (!source) return;
 
-            try {
-                await StoryDB.create({
-                    title: source.title + ' (Copy)',
-                    startPassage: source.startPassage,
-                    passages: deepClone(source.passages)
-                });
-                showToast('Duplicated to My Stories!');
-            } catch (err) {
-                console.error(err);
-                showToast('Error duplicating story');
-            }
+            duplicateSource = source;
+            $('duplicateTitle').value = source.title + ' (Copy)';
+            $('duplicateModal').classList.add('active');
+            $('duplicateTitle').focus();
         });
     });
 }
@@ -377,7 +371,17 @@ function openStory(id) {
 
     renderer.setStory(currentStory);
     player.setStory(currentStory);
-    canvas.reset();
+
+    // Center canvas on passages
+    const passages = Object.values(currentStory.passages || {});
+    if (passages.length > 0) {
+        const avgX = passages.reduce((sum, p) => sum + (p.x || 100), 0) / passages.length + 80;
+        const avgY = passages.reduce((sum, p) => sum + (p.y || 100), 0) / passages.length + 50;
+        canvas.centerOn(avgX, avgY);
+    } else {
+        canvas.reset();
+    }
+
     renderer.render();
 }
 
@@ -430,25 +434,33 @@ $('renameForm').addEventListener('submit', async e => {
 });
 
 $('duplicateStoryBtn').addEventListener('click', () => {
+    duplicateSource = null;
     $('duplicateTitle').value = currentStory.title + ' (Copy)';
     $('duplicateModal').classList.add('active');
     $('duplicateTitle').focus();
 });
 
-$('cancelDuplicate').addEventListener('click', () => $('duplicateModal').classList.remove('active'));
+$('cancelDuplicate').addEventListener('click', () => {
+    duplicateSource = null;
+    $('duplicateModal').classList.remove('active');
+});
 
 $('duplicateForm').addEventListener('submit', async e => {
     e.preventDefault();
     const title = $('duplicateTitle').value.trim();
     if (!title) return;
 
+    const source = duplicateSource || currentStory;
+    if (!source) return;
+
     try {
         await StoryDB.create({
             title,
-            startPassage: currentStory.startPassage,
-            passages: deepClone(currentStory.passages)
+            startPassage: source.startPassage,
+            passages: deepClone(source.passages)
         });
         $('duplicateModal').classList.remove('active');
+        duplicateSource = null;
         showToast('Duplicated!');
         stories = await StoryDB.getAll();
     } catch (err) {

@@ -80,6 +80,16 @@ export class StoryRenderer {
             this.onPassageDragStart(node, e);
         });
 
+        // Touch drag handling
+        node.addEventListener('touchstart', e => {
+            e.stopPropagation();
+            this.selectedPassage = passage.name;
+            document.querySelectorAll('.passage-node').forEach(n => n.classList.remove('selected'));
+            node.classList.add('selected');
+            this.onPassageSelect(passage.name);
+            this.onPassageDragStart(node, e);
+        }, { passive: true });
+
         // Double click to edit
         node.addEventListener('dblclick', e => {
             e.stopPropagation();
@@ -205,6 +215,17 @@ export class StoryPlayer {
             }
             return `<span class="story-link" data-target="${target.replace(/"/g, '&quot;')}">${display}</span>`;
         });
+
+        // Twine markup
+        content = content.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        content = content.replace(/\/\/(.+?)\/\//g, '<em>$1</em>');
+        content = content.replace(/__(.+?)__/g, '<u>$1</u>');
+        content = content.replace(/~~(.+?)~~/g, '<del>$1</del>');
+
+        // Media embedding
+        content = content.replace(/\[img\[([^\]]+)\]\]/g, '<img src="$1" alt="">');
+        content = content.replace(/\[audio\[([^\]]+)\]\]/g, '<audio src="$1" controls></audio>');
+        content = content.replace(/\[video\[([^\]]+)\]\]/g, '<video src="$1" controls></video>');
 
         // Paragraphs
         content = content.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
